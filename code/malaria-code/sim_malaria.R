@@ -1,6 +1,6 @@
 
 rm(list=ls())
-setwd("~/Documents/Mike/Projects/Application of Essential Regression/code/Code for ER")
+setwd("../Code for ER")
 source("SupLOVE.R")
 setwd("../")
 source("K-CV.R")

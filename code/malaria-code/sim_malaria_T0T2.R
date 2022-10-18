@@ -1,8 +1,8 @@
 
 rm(list=ls())
-setwd("~/malaria-code/Code for ER")
+setwd("../Code for ER")
 source("SupLOVE.R")
-setwd("~/malaria-code")
+setwd("..")
 source("K-CV.R")
 library(readr)
 library(ROCR)

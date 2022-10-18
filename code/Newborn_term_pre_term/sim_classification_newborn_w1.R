@@ -1,15 +1,15 @@
 
 rm(list=ls())
-setwd("~/Documents/Mike/Projects/Application of Essential Regression/code/Code for ER")
+setwd("../Code for ER")
 source("SupLOVE.R")
-setwd("~/Documents/Mike/Projects/Application of Essential Regression/code")
+setwd("..")
 source("K-CV.R")
 source("Helper.R")
 source("Other_algorithms.R")
 library(readr)
 library(ROCR)
 
-child_data <- read.csv("../dataset/Newborndata/data_child.csv")
+child_data <- read.csv("../dataset/newborn/data_child.csv")
 # View(child_data)
 
 ### Week 1    dims: 56  282

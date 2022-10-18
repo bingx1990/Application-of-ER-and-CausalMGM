@@ -2,7 +2,7 @@
 #######                       Predictions                       ########
 ########################################################################
 rm(list=ls())
-setwd("~/Documents/Mike/Projects/Essential Regression/simulations")
+setwd("Code for ER")
 source("SupLOVE.R")
 library(pls)
 
@@ -78,9 +78,9 @@ result <- cbind(errors_NPR, rank, rank_pcr_ratio)
 
 rownames(result) <- c("p = 200", "p = 400", "p = 600", "p = 800", "p = 1000")
 
-# write.table(result, file = "~/Documents/Mike/Projects/Application of Essential Regression/output/syn_mse.txt")
+# write.table(result, file = "../output/syn_mse.txt")
 
-data_pred <- read.table("~/Documents/Mike/Projects/Application of Essential Regression/output/syn_mse.txt")
+data_pred <- read.table("../output/syn_mse.txt")
 
 # data_pred <- data_pred[,-4]
 x_labs <- c(200, 400, 600, 800, 1000)

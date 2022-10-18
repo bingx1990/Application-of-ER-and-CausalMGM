@@ -1,6 +1,6 @@
 ### Data preprocessing
 rm(list=ls())
-setwd("~/Documents/Mike/Projects/Application of Essential Regression/dataset/Newborndata")
+setwd("../../dataset/newborn")
 
 library(readr)
 Cell <- data.frame(read_csv("Cell population frequencies.csv"))

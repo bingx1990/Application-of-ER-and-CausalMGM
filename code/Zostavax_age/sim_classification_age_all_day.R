@@ -5,16 +5,16 @@
 ##########                                                            ##########
 ################################################################################
 rm(list=ls())
-setwd("~/Documents/Mike/Projects/Application of Essential Regression/code/Code for ER")
+setwd("../Code for ER")
 source("SupLOVE.R")
-setwd("~/Documents/Mike/Projects/Application of Essential Regression/code")
+setwd("..")
 source("K-CV.R")
 source("Helper.R")
 source("Other_algorithms.R")
 library(ROCR)
 library(readr)
 
-data <- read_delim("../dataset/age_all_days_imputed_5NN.txt", " ",
+data <- read_delim("../dataset/age/age_all_days_imputed_5NN.txt", " ",
                    escape_double = FALSE, trim_ws = TRUE)
 Y <- data$age
 X <- data[,-(1:2)]

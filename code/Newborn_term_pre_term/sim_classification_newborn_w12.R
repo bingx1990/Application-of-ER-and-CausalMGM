@@ -1,15 +1,15 @@
 
 rm(list=ls())
-setwd("~/Documents/Mike/Projects/Application of Essential Regression/code/Code for ER")
+setwd("../Code for ER")
 source("SupLOVE.R")
-setwd("~/Documents/Mike/Projects/Application of Essential Regression/code")
+setwd("..")
 source("K-CV.R")
 source("Helper.R")
 source("Other_algorithms.R")
 library(readr)
 library(ROCR)
 
-child_data <- read.csv("../dataset/Newborndata/data_child.csv")
+child_data <- read.csv("../dataset/newborn/data_child.csv")
 # View(child_data)
 
 # ### Week 1    dims: 56  282 
@@ -256,7 +256,7 @@ Violin_plot(methods, CV_result, MSE_flag = F, ylims = c(0.25, 1),
 ##################################################
 
 rm(list=ls())
-setwd("~/Documents/Mike/Projects/Application of Essential Regression/output/newborn_dataset")
+setwd("../output/newborn_dataset")
 library(readr)
 
 # # alpha = 0.1 level
@@ -264,8 +264,8 @@ library(readr)
 # path_w12 <- "./clusters_week12/love_04.08_nGroup3delta=0.15lbd=1 /"
 
 # alpha = 0.05 level
-path_w1 <- "./clusters_week1/love_04.04_nGroup5delta=0.17lbd=1 /"
-path_w12 <- "./clusters_week12/love_04.04_nGroup2delta=0.15lbd=1 /"
+path_w1 <- "./clusters_week1/love_04.04_nGroup5delta=0.17lbd=1/"
+path_w12 <- "./clusters_week12/love_04.04_nGroup2delta=0.15lbd=1/"
 
 clusters_w1 <- clusters_w12 <- c()
 

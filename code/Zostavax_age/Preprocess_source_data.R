@@ -1,7 +1,7 @@
 ### Data preprocessing
 
 rm(list=ls())
-setwd("~/Documents/Mike/Projects/Application of Essential Regression/dataset/sourcedata")
+setwd("../../dataset/age/sourcedata")
 
 library(readr)
 age_data <- read_delim("VZV_age_gender2.txt", "\t", escape_double = FALSE, trim_ws = TRUE)
