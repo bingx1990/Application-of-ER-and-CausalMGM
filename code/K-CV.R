@@ -374,46 +374,191 @@ extract = function(preVec, indices) {
 
 
 
-# #### KfoldCV for Essential Regression
-# 
-# 
-# KfoldCV_ER = function(k, Y, X, delta_grid, standardize) {
-#   ## Input: Both Y and X are centered
-# 
-#   indicesPerGroup = extract(sample(1:nrow(X)), partition(nrow(X), k))
-# 
-#   MSEs <- c()
-#   for (i in 1:k) {
-#     valid_ind <- indicesPerGroup[[i]]
-# 
-#     trainY <- Y[-valid_ind];    validY <- Y[valid_ind]
-#     trainX <- X[-valid_ind,];   validX <- X[valid_ind,]
-# 
-#     if (standardize) {
-#       train_X_stand <- scale(trainX, T, T)
-#       centers_X <- attr(train_X_stand, "scaled:center")
-#       scales_X <- attr(train_X_stand, "scaled:scale")
-#       test_X_stand <- t((t(validX) - centers_X) / scales_X)
-#     } else {
-#       train_X_stand <- scale(trainX, T, F)
-#       centers_X <- attr(train_X_stand, "scaled:center")
-#       test_X_stand <- t((t(validX) - centers_X))
-# 
-#       # train_X_stand <- trainX
-#       # test_X_stand <- validX
-#     }
-#     train_Y_stand <- trainY - mean(trainY)
-#     test_Y_stand <- validY - mean(trainY)
-# 
-#     MSEs <- rbind(MSEs, sapply(delta_grid, calMSE_ER, validY = test_Y_stand, validX = test_X_stand,
-#                                trainX = train_X_stand, trainY = train_Y_stand))
-# 
-#   }
-#   apply(MSEs, 2, mean)
-# }
-# 
-# 
-# calMSE_ER = function(validY, validX, trainX, trainY, delta) {
-#   res <- ER(trainY, trainX, delta)
-#   Mse(validY, validX %*% res$pred$theta)
-# }
+KfoldCV = function(k, Y, X, methods, metric = "adv", standardize = F, 
+                   pt_option = "perm_X", delta_grid = NULL, ER_sparse = F) {
+  # pt_option:  "perm_X", "perm_Y", "perm_X_Y"
+  
+  indicesPerGroup = extract(sample(1:nrow(X)), partition(nrow(X), k))
+  
+  perm_col_ind <- sample(1:ncol(X))
+  Y_perm <- sample(Y)
+  
+  MSEs <- matrix(NA, k, length(methods))
+  fitted_mat <- matrix(NA, length(Y), length(methods))
+  numb_beta <- rep(0, k)
+  for (i in 1:k) {
+    valid_ind <- indicesPerGroup[[i]]
+    
+    trainY <- Y[-valid_ind];    validY <- Y[valid_ind]
+    trainX <- X[-valid_ind,];   validX <- X[valid_ind,, drop = F]
+    
+      
+    for (j in 1:length(methods)) {
+      method_j <- methods[j]
+      if (method_j == "Perm-Lasso") {
+        if (pt_option == "perm_X")
+          res_j <- calMSE(validY, validX, trainX[,perm_col_ind], trainY, method_j, metric,
+                          standardize, numb_beta[i])
+        else if (pt_option == "perm_Y")
+          res_j <- calMSE(validY, validX, trainX, Y_perm[-valid_ind], method_j, metric, 
+                          standardize, numb_beta[i])
+        else if (pt_option == "perm_X_Y")
+          res_j <- calMSE(validY, validX, trainX[,perm_col_ind], Y_perm[-valid_ind], method_j, metric, 
+                          standardize, numb_beta[i])
+      } else if (method_j == "ER-Lasso-LS" | method_j == "ER-Lasso-Dantzig") {
+        
+        res_j <- calMSE(validY, validX, trainX, trainY, method_j, metric, 
+                        standardize, delta_grid = selected_delta)  
+        
+      } else {
+    
+        res_j <- calMSE(validY, validX, trainX, trainY, method_j, metric, 
+                        standardize, delta_grid = delta_grid, ER_sparse = ER_sparse)  
+        
+        if (method_j == "Lasso")
+          numb_beta[i] = res_j$numb_beta
+        
+        if (method_j == "ER")
+          selected_delta = res_j$delta
+  
+      }
+      
+      MSEs[i, j] <- res_j$metric
+      fitted_mat[valid_ind, j] <- res_j$fitted
+    }
+  }
+  colnames(MSEs) <- colnames(fitted_mat) <- methods
+  cat("Finishing one replicate......\n")
+  return(list(MSE = apply(MSEs, 2, mean), fitted = fitted_mat))
+}
+
+calMSE = function(validY, validX, trainX, trainY, method, metric, standardize, 
+                  numb_beta = 0, delta_grid = NULL, ER_sparse = F) {
+  if (standardize) {
+    train_X_stand <- scale(trainX, T, T)
+    centers_X <- attr(train_X_stand, "scaled:center")
+    scales_X <- attr(train_X_stand, "scaled:scale")
+    test_X_stand <- t((t(validX) - centers_X) / scales_X)
+  } else {
+    train_X_stand <- scale(trainX, T, F)
+    centers_X <- attr(train_X_stand, "scaled:center")
+    test_X_stand <- t((t(validX) - centers_X))
+  }
+  train_Y_stand <- trainY - mean(trainY)
+  
+  if (method == "Lasso") {
+    
+    cvfit = cv.glmnet(trainX, trainY, alpha = 1, nfolds = 10, standardize = F)
+    numb_beta <- cvfit$nzero[which(cvfit$lambda == cvfit$lambda.min)]
+    
+    if (numb_beta == 0) {
+      # if Lasso selects 0 variable, we randomly select 5 features instead and use OLS to fit
+      feature_ind <- sample(1:ncol(trainX), 5)
+      numb_beta <- 5
+      reduced_beta <- try(solve(crossprod(train_X_stand[,feature_ind]), crossprod(train_X_stand[,feature_ind], train_Y_stand)), silent = T)
+      if (class(reduced_beta)[1] == "try-error")
+        reduced_beta <- ginv(crossprod(train_X_stand[,feature_ind])) %*% crossprod(train_X_stand[,feature_ind], train_Y_stand)
+      res_pred <- mean(trainY) + test_X_stand[,feature_ind] %*% reduced_beta
+    } else
+      res_pred <- predict(cvfit, newx = validX, s = "lambda.min", type = "response")
+    
+  } else if (method == "Perm-Lasso") {
+    
+    cvfit = cv.glmnet(trainX, trainY, alpha = 1, nfolds = 10, standardize = F)
+    perm_numb <- cvfit$nzero[which(cvfit$lambda == cvfit$lambda.min)]
+    if (perm_numb == 0 & numb_beta != 0) {
+      feature_ind <- sample(1:ncol(trainX), numb_beta)
+      reduced_beta <- try(solve(crossprod(train_X_stand[,feature_ind]), crossprod(train_X_stand[,feature_ind], train_Y_stand)), silent = T)
+      if (class(reduced_beta)[1] == "try-error") 
+        reduced_beta <- ginv(crossprod(train_X_stand[,feature_ind])) %*% crossprod(train_X_stand[,feature_ind], train_Y_stand)
+      res_pred <- mean(trainY) + test_X_stand[,feature_ind] %*% reduced_beta
+    } else
+      res_pred <- predict(cvfit, newx = validX, s = "lambda.min", type = "response")
+    
+  } else if (method == "PFR") {
+    
+    res_PCR <- PCR(train_X_stand, train_Y_stand, option = "ratio")
+    res_pred <- test_X_stand %*% res_PCR$theta + mean(trainY)
+    
+  } else if (method == "ER" || method == "Perm-ER") {
+    
+    if (is.null(delta_grid))
+      delta_grid <- seq(0.25, 0.7, 0.02)
+    if (!ER_sparse) {
+      res <- ER(train_Y_stand, train_X_stand, delta_grid, verbose = F)
+      res_pred <- test_X_stand %*% res$pred$theta +  mean(trainY) 
+    } else {
+      res <- ER(train_Y_stand, train_X_stand, delta_grid, verbose = F, CI = F, beta = "Dantzig")
+      non_zero_beta <- which(res$beta != 0)
+      res_pred <- test_X_stand %*% res$Q %*% res$beta + mean(trainY)
+    }
+    delta_grid <- res$optDelta
+    
+  } else if (method == "ER-Lasso-Dantzig" || method == "ER-Lasso-LS") {
+    if (is.null(delta_grid))
+      delta_grid <- seq(0.25, 0.7, 0.02)
+    
+    if (method == "ER-Lasso-Dantzig") {
+      res <- ER(train_Y_stand, train_X_stand, delta_grid, verbose = F, CI = F, beta = "Dantzig")
+      non_zero_beta <- which(res$beta != 0)
+    } else {
+      res <- ER(train_Y_stand, train_X_stand, delta_grid, verbose = F, CI = T, beta = "LS")
+      p_vals <- 2 * pnorm(abs(res$beta) / sqrt(res$beta_var / length(train_Y_stand)), lower.tail = F)
+      non_zero_beta <- which(p_vals <= 0.1)
+    }
+    if (length(non_zero_beta) == 0) {
+      cat("There is no selected significant factor. All factors are used.\n")
+      non_zero_beta <- 1:res$K
+    }
+    
+    A_hat <- res$A
+    feature_ind <- which(rowSums(abs(A_hat[,non_zero_beta, drop = F])) != 0)
+    cvfit = cv.glmnet(trainX[,feature_ind,drop = F], trainY, alpha = 1, nfolds = 10, standardize = F)
+    res_pred <- predict(cvfit, newx = validX[,feature_ind, drop = F], s = "lambda.min", type = "response")
+  
+  } else if (method == "PLS") 
+    res_pred <- PLS(trainX, trainY, validX)
+    
+  
+  error <- ifelse(metric == "mse", Mse(validY, res_pred), Adev(validY, res_pred))
+  
+  return(list(metric = error, numb_beta = numb_beta, fitted = res_pred, delta = delta_grid))
+}
+
+
+
+
+
+CV_binary <- function(Y, X, methods, delta_grid = NULL, ER_sparse = F) {
+  n <- length(Y)
+  pred_val <- matrix(NA, n, length(methods))
+  colnames(pred_val) <- methods
+  
+  Y_perm <- Y[sample(1:n)]
+  
+  for (i in 1:n) {
+    trainX <- X[-i,]
+    trainY <- Y[-i]
+    validX <- X[i,,drop = F]
+    
+    for (j in 1:length(methods)) {
+      method_j <- methods[j]
+      if (method_j == "Perm-ER" | method_j == "Perm-Lasso") 
+        trainY <- Y_perm[-i]
+      
+      if (method_j == "ER-Lasso-LS" | method_j == "ER-Lasso-Dantzig")
+        res_ij <- calPred(validX, trainX, trainY, method_j, 
+                          delta_grid = selected_delta, ER_sparse = ER_sparse)
+      else 
+        res_ij <- calPred(validX, trainX, trainY, method_j, 
+                          delta_grid = delta_grid, ER_sparse = ER_sparse)
+      
+      if (method_j == "ER")
+        selected_delta <- res_ij$delta
+      
+      pred_val[i, j] <- res_ij$pred
+    }
+  }
+  return(pred_val)
+}
+
