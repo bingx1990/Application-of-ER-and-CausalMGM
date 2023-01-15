@@ -562,3 +562,96 @@ CV_binary <- function(Y, X, methods, delta_grid = NULL, ER_sparse = F) {
   return(pred_val)
 }
 
+
+calPred = function(validX, trainX, trainY, method, delta_grid, ER_sparse) {
+  
+  train_Y_stand <- trainY - mean(trainY)
+  train_X_stand <- scale(trainX, T, F)
+  centers_X <- attr(train_X_stand, "scaled:center")
+  test_X_stand <- matrix(validX - centers_X, nrow = 1)
+
+  if (method == "Lasso" | method == "Perm-Lasso") {
+
+    if (nrow(trainX) < 30)
+      cvfit = cv.glmnet(trainX, trainY, alpha = 1, nfolds = 5, standardize = F)
+    else
+      cvfit = cv.glmnet(trainX, trainY, alpha = 1, nfolds = 10, standardize = F)
+    
+    numb_beta <- cvfit$nzero[which(cvfit$lambda == cvfit$lambda.min)]
+    if (numb_beta == 0) {
+      # if Lasso selects 0 variable, we randomly select 5 features instead and use OLS to fit
+      feature_ind <- sample(1:ncol(trainX), 5)
+  
+      reduced_beta <- try(solve(crossprod(train_X_stand[,feature_ind]), crossprod(train_X_stand[,feature_ind], train_Y_stand)), silent = T)
+      if (class(reduced_beta)[1] == "try-error")
+        reduced_beta <- ginv(crossprod(train_X_stand[,feature_ind])) %*% crossprod(train_X_stand[,feature_ind], train_Y_stand)
+      
+      pred_values <- mean(trainY) + test_X_stand[,feature_ind] %*% reduced_beta
+    } else {
+      pred_values <- predict(cvfit, newx = validX, s = "lambda.min", type = "response")
+    }
+      
+  } else if (method == "PFR") {
+
+    res_PCR <- PCR(train_X_stand, train_Y_stand, option = "ratio")
+    pred <- test_X_stand %*% res_PCR$theta
+    pred_values <- pred + mean(trainY)
+
+  } else if (method == "PFR-3") {
+    
+    res_PCR <- PCR(train_X_stand, train_Y_stand, K = 3) 
+    pred <- test_X_stand %*% res_PCR$theta
+    pred_values <- pred + mean(trainY)
+  
+  } else if (method == "ER" | method == "Perm-ER") {
+    
+    if (is.null(delta_grid))
+      delta_grid <- seq(0.25, 0.7, 0.01) 
+    
+    if (!ER_sparse) {
+      res <- ER(train_Y_stand, train_X_stand, delta_grid, verbose = F)
+      pred_values <- test_X_stand %*% res$pred$theta +  mean(trainY) 
+    } else {
+      res <- ER(train_Y_stand, train_X_stand, delta_grid, verbose = F, CI = T, beta = "Dantzig")
+      non_zero_beta <- which(res$beta != 0)
+      if (length(non_zero_beta) == 0)
+        non_zero_beta <- 1:res$K
+      
+      pred_values <- test_X_stand %*% res$Q[,non_zero_beta] %*% res$beta[non_zero_beta] + mean(trainY)
+    }
+    
+    delta_grid = res$optDelta
+    
+  } else if (method == "ER-Lasso-Dantzig" || method == "ER-Lasso-LS") {
+    
+    if (is.null(delta_grid))
+      delta_grid <- seq(0.25, 0.7, 0.02)
+    
+    if (method == "ER-Lasso-Dantzig") {
+      res <- ER(train_Y_stand, train_X_stand, delta_grid, verbose = F, CI = F, beta = "Dantzig")
+      non_zero_beta <- which(res$beta != 0)
+    } else {
+      res <- ER(train_Y_stand, train_X_stand, delta_grid, verbose = F, CI = T, beta = "LS")
+      p_vals <- 2 * pnorm(abs(res$beta) / sqrt(res$beta_var / length(train_Y_stand)), lower.tail = F)
+      non_zero_beta <- which(p_vals <= 0.1)
+    }
+    if (length(non_zero_beta) == 0) {
+      cat("There is no selected significant factor. All factors are used.\n")
+      non_zero_beta <- 1:res$K
+    }
+    
+    A_hat <- res$A
+    feature_ind <- which(rowSums(abs(A_hat[,non_zero_beta, drop = F])) != 0)
+    if (nrow(trainX) < 30)
+      cvfit = cv.glmnet(trainX[,feature_ind,drop = F], trainY, alpha = 1, nfolds = 5, standardize = F)
+    else
+      cvfit = cv.glmnet(trainX[,feature_ind,drop = F], trainY, alpha = 1, nfolds = 10, standardize = F)
+    
+    pred_values <- predict(cvfit, newx = validX[,feature_ind,drop = F], s = "lambda.min", type = "response")
+    
+  } else if (method == "PLS") 
+    pred_values <- PLS(trainX, trainY, validX)
+
+  list(pred = pred_values, delta = delta_grid)
+}
+
